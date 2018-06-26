@@ -452,6 +452,6 @@ describe('PeerInstructionXBlock function', function() {
     it('should generate URLs using runtime', function() {
         expect(mockRuntime.handlerUrl.calls.count()).toBe(4);
         expect(mockRuntime.handlerUrl.calls.allArgs()).toEqual(
-            [[mockElement, 'get_stats'], [mockElement, 'submit_answer'], [mockElement, 'get_asset'], [mockElement, 'get_data']]);
+            [[mockElement, 'get_stats'], [mockElement, 'submit_answer'], [mockElement, 'get_asset'], [mockElement, 'get_data'], [mockElement, 'flag_inappropriate'], [mockElement, 'get_pool_status'], [mockElement, 'staff_toggle_inappropriate']]);
     });
 });

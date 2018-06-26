@@ -53,11 +53,57 @@ angular.module('UBCPI', ['ngSanitize', 'ngCookies', 'gettext'])
         };
     }])
 
+    .directive('confirmFlagAppropriate', ['backendService', 'notify', function(backendService, notify) {
+        return {
+            scope: true,
+            link: function (scope, element, attr) {
+                element.bind('click', function(event) {
+                    if (window.confirm(attr.confirmFlagAppropriate)) {
+                        backendService.flagInappropriate(scope.otherAnswer.id).then(function() {
+                            notify('error', {
+                                'title': gettext('Inappropriate Answer'),
+                                'message': gettext('Answer flagged as inappropriate')
+                            });
+                        }, function(error) {
+                            notify('error', {
+                                'title': gettext('Error flagging inappropriate answer!'),
+                                'message': gettext('Please refresh the page and try again!')
+                            });
+                        });
+                    };
+                });
+            }
+        };
+    }])
+
+    .directive('confirmStaffToggleInappropriate', ['backendService', 'notify', function(backendService, notify) {
+        return {
+            scope: true,
+            link: function (scope, element, attr, ctrl) {
+                element.bind('click', function(event) {
+                    if (window.confirm(attr.confirmStaffToggleInappropriate)) {
+                        backendService.staffToggleInappropriate(scope.ans.id, attr.value).then(function(data) {
+                            scope.rc.explanationPool.pool = data;
+                        }, function(error) {
+                            notify('error', {
+                                'title': gettext('Error flagging inappropriate answer!'),
+                                'message': gettext('Please refresh the page and try again!')
+                            });
+                        });
+                    };
+                });
+            }
+        };
+    }])
+
     .factory('backendService', ['$http', '$q', '$rootScope', function ($http, $q, $rootScope) {
         return {
             getStats: getStats,
             submit: submit,
             get_data: get_data,
+            flagInappropriate: flagInappropriate,
+            getPoolStatus: getPoolStatus,
+            staffToggleInappropriate: staffToggleInappropriate
         };
 
         function getStats() {
@@ -99,6 +145,50 @@ angular.module('UBCPI', ['ngSanitize', 'ngCookies', 'gettext'])
                 }
             );
         }
+
+        function flagInappropriate(id) {
+            var flagUrl = $rootScope.config.urls.flag_inappropriate;
+            var flagData = JSON.stringify({
+                "id": id
+            });
+            return $http.post(flagUrl, flagData).then(
+                function(response) {
+                    return response.data;
+                },
+                function(error) {
+                    return $q.reject(error);
+                }
+            );
+        }
+
+        function staffToggleInappropriate(id, considered_inappropriate) {
+            var flagUrl = $rootScope.config.urls.staff_toggle_inappropriate;
+            var flagData = JSON.stringify({
+                "id": id,
+                "considered_inappropriate": considered_inappropriate
+            });
+            return $http.post(flagUrl, flagData).then(
+                function(response) {
+                    return response.data;
+                },
+                function(error) {
+                    return $q.reject(error);
+                }
+            );
+        }
+
+        function getPoolStatus() {
+            var getPoolStatusUrl = $rootScope.config.urls.get_pool_status;
+            return $http.post(getPoolStatusUrl, {}).then(
+                function(response) {
+                    return response.data;
+                },
+                function(error) {
+                    return $q.reject(error);
+                }
+            );
+        }
+        
     }])
 
     .controller('ReviseController', ['$scope', 'notify', 'backendService', '$q', 'gettext', '$location', '$anchorScroll', '$timeout',
@@ -237,6 +327,35 @@ angular.module('UBCPI', ['ngSanitize', 'ngCookies', 'gettext'])
                 }
                 return false;
             };
+
+            self.explanationPool = {
+                showing: false,
+                pool: null,
+                sortType: ['-considered_inappropriate', '-inappropriate_report_count', 'option', 'explanation'],
+                sortReverse: false,
+            };
+            $scope.$watch(
+                function watchController(scope) {
+                    return self.explanationPool.showing;
+                },
+                function(newValue, oldValue) {
+                    if (newValue === oldValue) {
+                        return;
+                    }
+                    if (!newValue) {
+                        self.explanationPool.pool = null;
+                    } else {
+                        backendService.getPoolStatus().then(function(data) {
+                            self.explanationPool.pool = data;
+                        }, function(error) {
+                            notify('error', {
+                                'title': gettext('Error retrieving data!'),
+                                'message': gettext('Please refresh the page and try again!')
+                            });
+                        });
+                    }
+                });
+
         }]);
 
 /**
@@ -259,7 +378,10 @@ function PeerInstructionXBlock(runtime, element, data) {
         'get_stats': runtime.handlerUrl(element, 'get_stats'),
         'submit_answer': runtime.handlerUrl(element, 'submit_answer'),
         'get_asset': runtime.handlerUrl(element, 'get_asset'),
-        'get_data': runtime.handlerUrl(element, 'get_data')
+        'get_data': runtime.handlerUrl(element, 'get_data'),
+        'flag_inappropriate': runtime.handlerUrl(element, 'flag_inappropriate'),
+        'get_pool_status': runtime.handlerUrl(element, 'get_pool_status'),
+        'staff_toggle_inappropriate': runtime.handlerUrl(element, 'staff_toggle_inappropriate'),
     };
 
     // in order to support multiple same apps on the same page but

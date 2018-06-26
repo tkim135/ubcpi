@@ -18,7 +18,7 @@ from xblock.fragment import Fragment
 from xblockutils.publish_event import PublishEventMixin
 from .utils import _  # pylint: disable=unused-import
 
-from answer_pool import offer_answer, validate_seeded_answers, get_other_answers
+from answer_pool import offer_answer, validate_seeded_answers, get_other_answers, SEED_EXPLANATION_ID
 import persistence as sas_api
 from serialize import parse_from_xml, serialize_to_xml
 
@@ -67,6 +67,11 @@ def validate_options(options):
     try:
         if options['algo']['num_responses'] != '#' and int(options['algo']['num_responses']) < 0:
             errors.append(_('Number of Responses'))
+    except ValueError:
+        errors.append(_('Not an Integer'))
+    try:
+        if int(options['flag_inappropriate_threshold']) < 0:
+            errors.append(_('Threshold for Inappropriate Explanation'))
     except ValueError:
         errors.append(_('Not an Integer'))
 
@@ -281,6 +286,17 @@ class PeerInstructionXBlock(XBlock, MissingDataFetcherMixin, PublishEventMixin):
         scope=Scope.settings
     )
 
+    flagged_answers = Dict(
+        default={}, scope=Scope.user_state_summary,
+        help=_("Stores answers flagged by students as inappropriate")
+    )
+
+    flag_inappropriate_threshold = Integer(
+        default=5, scope=Scope.settings,
+        help=_("Defines the threshold for removing a student explanation from "
+            "the pool after being reported as inappropriate.")
+    )
+
     def has_dynamic_children(self):
         """
         Do we dynamically determine our children? No, we don't have any.
@@ -371,6 +387,7 @@ class PeerInstructionXBlock(XBlock, MissingDataFetcherMixin, PublishEventMixin):
             },
             'seeds': self.seeds,
             'lang': translation.get_language(),
+            'flag_inappropriate_threshold': self.flag_inappropriate_threshold,
         })
 
         return frag
@@ -396,6 +413,7 @@ class PeerInstructionXBlock(XBlock, MissingDataFetcherMixin, PublishEventMixin):
         self.correct_rationale = data['correct_rationale']
         self.algo = data['algo']
         self.seeds = data['seeds']
+        self.flag_inappropriate_threshold = data['flag_inappropriate_threshold']
 
         return {'success': 'true'}
 
@@ -548,6 +566,22 @@ class PeerInstructionXBlock(XBlock, MissingDataFetcherMixin, PublishEventMixin):
 
         return frag
 
+    def _submission_considered_inappropriate(self, student_id):
+        """
+        Checked whether student's submission is considered as inappropriate:
+        - marked as inappropriate by instructional team
+        - down vote by student is over the threshold
+        """
+        flagged_item = self.flagged_answers.get(student_id, {})
+
+        if flagged_item.get('staff_set_inappropriate', None) is not None:
+            return flagged_item.get('staff_set_inappropriate')
+
+        if len(flagged_item.get('reported_by', {})) >= self.flag_inappropriate_threshold:
+            return True
+
+        return False
+
     def record_response(self, answer, rationale, status):
         """
         Store response from student to the backend
@@ -587,7 +621,10 @@ class PeerInstructionXBlock(XBlock, MissingDataFetcherMixin, PublishEventMixin):
                 self.sys_selected_answers, answer, rationale,
                 student_item['student_id'], self.algo, self.options)
             self.other_answers_shown = get_other_answers(
-                self.sys_selected_answers, self.seeds, self.get_student_item_dict, self.algo, self.options)
+                self.sys_selected_answers, self.seeds, self.get_student_item_dict,
+                self.algo, self.options,
+                {k for k,v in self.flagged_answers.iteritems() \
+                    if self._submission_considered_inappropriate(k)})
             event_dict['other_student_responses'] = self.other_answers_shown
             self.publish_event_from_dict(
                 self.event_namespace + '.original_submitted',
@@ -631,6 +668,10 @@ class PeerInstructionXBlock(XBlock, MissingDataFetcherMixin, PublishEventMixin):
         }
         return self.stats
 
+    def is_course_staff(self):
+        """Returns True if requestor is part of the course staff"""
+        return getattr(self.xmodule_runtime, 'user_is_staff', False)
+
     @XBlock.json_handler
     def get_stats(self, data, suffix=''):
         """
@@ -672,7 +713,10 @@ class PeerInstructionXBlock(XBlock, MissingDataFetcherMixin, PublishEventMixin):
             # Could happen if a student completed Step 1 before ubcpi upgraded to persist peer answers.
             if not other_answers:
                 ret['other_answers'] = get_other_answers(
-                    self.sys_selected_answers, self.seeds, self.get_student_item_dict, self.algo, self.options)
+                    self.sys_selected_answers, self.seeds,
+                    self.get_student_item_dict, self.algo, self.options,
+                    {k for k,v in self.flagged_answers.iteritems() \
+                        if self._submission_considered_inappropriate(k)})
             else:
                 ret['other_answers'] = other_answers
 
@@ -724,6 +768,64 @@ class PeerInstructionXBlock(XBlock, MissingDataFetcherMixin, PublishEventMixin):
             options_msg = options_msg if options_msg else {}
             msg.update(options_msg)
             raise JsonHandlerError(400, msg)
+
+    @XBlock.json_handler
+    def flag_inappropriate(self, data, suffix=''):
+        """
+        Students report inappropriate answers
+        """
+        the_id = str(data['id'])
+        student_item = self.get_student_item_dict()
+        if the_id != SEED_EXPLANATION_ID:
+            flagged = self.flagged_answers.setdefault(the_id, {'reported_by': {}, 'staff_set_inappropriate': None})
+            flagged.setdefault('reported_by', {}).setdefault(str(student_item['student_id']), {})
+
+        return {'success': 'true'}
+
+    @XBlock.json_handler
+    def staff_toggle_inappropriate(self, data, suffix=''):
+        """
+        Instructional teams override inappropriate answers
+        """
+        if not self.is_course_staff():
+            return Response(status=403)
+
+        the_id = str(data['id'])
+        inappropriate = str(data['considered_inappropriate'])
+        if the_id != SEED_EXPLANATION_ID:
+            flagged = self.flagged_answers.setdefault(the_id, {'reported_by': {}, 'staff_set_inappropriate': None})
+            if inappropriate == 'true':
+                flagged['staff_set_inappropriate'] = True
+            elif inappropriate == 'false':
+                flagged['staff_set_inappropriate'] = False
+            else:
+                flagged['staff_set_inappropriate'] = None
+
+        return self._pool_status()
+
+    def _pool_status(self):
+        result = []
+        for option in self.sys_selected_answers:
+            for student_id in self.sys_selected_answers[option]:
+                student_item = self.get_student_item_dict(student_id)
+                ans = sas_api.get_answers_for_student(student_item)
+                if option == str(ans.get_vote(0)):
+                    result.append(dict(
+                        option=option,
+                        id=student_id,
+                        explanation=ans.get_rationale(0),
+                        inappropriate_report_count=len(self.flagged_answers.get(str(student_id), {}).get('reported_by', {})),
+                        considered_inappropriate=self._submission_considered_inappropriate(str(student_id)),
+                        staff_set_inappropriate=self.flagged_answers.get(str(student_id), {}).get('staff_set_inappropriate', None),
+                    ))
+        return result
+
+    @XBlock.json_handler
+    def get_pool_status(self, data, suffix=''):
+        """
+        Retrieve explanation in the pool
+        """
+        return self._pool_status()
 
     @classmethod
     def workbench_scenarios(cls):  # pragma: no cover

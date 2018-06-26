@@ -596,6 +596,10 @@ text.ubcpibar.correct-answer {
     padding-left: 7px;
 }
 
+.other-rationale-inappropriate {
+    cursor: pointer;
+}
+
 .ubcpi-class-breakdown {
     padding: 10px 20px;
     border: 1px solid #D7DBDF;
@@ -623,6 +627,42 @@ text.ubcpibar.correct-answer {
 
 .ubcpi-breakdown-answer-options .ubcpi-option .ubcpi-breakdown-answer-text {
     display: block;
+}
+
+.ubcpi-staff-explanation-pool {
+    text-align: left;
+    background: #F8F8F8;
+    padding: 15px;
+    margin: 15px 0 20px;
+}
+
+.ubcpi-staff-explanation-pool .ubcpi-staff-explanation-pool-loading {
+    text-align: center;
+}
+
+.ubcpi-staff-explanation-pool .pool-table {
+    width: 100%;
+    border: 1px solid black;
+    font-size: 0.8em;
+}
+
+.ubcpi-staff-explanation-pool .pool-table thead td {
+    text-align: center;
+    font-weight: bold;
+}
+
+.ubcpi-staff-explanation-pool .pool-table td {
+    border: 1px solid #ccc;
+}
+
+.ubcpi-staff-explanation-pool .pool-table .ubcpi-staff-override-options {
+    display: inline-block;
+    margin-left: 10px;
+    cursor: pointer;
+}
+
+.ubcpi-staff-explanation-pool .pool-table tbody tr:nth-child(even){
+    background-color: #f2f2f2;
 }
 
 #pi-form .list-input.settings-list .setting-label {

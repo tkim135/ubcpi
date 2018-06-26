@@ -42,7 +42,8 @@
           "answer": 1,
           "rationale": "Seeded Rationale  2"
         }
-      ]
+      ],
+      "flag_inappropriate_threshold": 2
     },
     "error": {
       "error": {
@@ -97,7 +98,8 @@
           "answer": 1,
           "rationale": "Seeded Rationale  2"
         }
-      ]
+      ],
+      "flag_inappropriate_threshold": 2
     },
     "error": {
       "error": {
@@ -152,7 +154,8 @@
           "answer": 1,
           "rationale": "Seeded Rationale  2"
         }
-      ]
+      ],
+      "flag_inappropriate_threshold": 2
     },
     "error": {
       "error": {
@@ -207,7 +210,8 @@
           "answer": 1,
           "rationale": "Seeded Rationale  2"
         }
-      ]
+      ],
+      "flag_inappropriate_threshold": 2
     },
     "error": {
       "error": {
