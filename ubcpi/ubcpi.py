@@ -6,6 +6,8 @@ import uuid
 
 from django.core.exceptions import PermissionDenied
 from django.conf import settings
+from django.template.context import Context
+from django.template.loader import get_template
 from django.utils import translation
 import pkg_resources
 from webob import Response
@@ -14,6 +16,7 @@ from xblock.exceptions import JsonHandlerError
 from xblock.fields import Scope, String, List, Dict, Integer, DateTime, Float
 from xblock.fragment import Fragment
 from xblockutils.publish_event import PublishEventMixin
+from .mixins import EnforceDueDates
 from .utils import _  # pylint: disable=unused-import
 
 from answer_pool import offer_answer, validate_seeded_answers, get_other_answers
@@ -164,7 +167,7 @@ class MissingDataFetcherMixin:
 
 @XBlock.needs('user')
 @XBlock.needs('i18n')
-class PeerInstructionXBlock(XBlock, MissingDataFetcherMixin, PublishEventMixin):
+class PeerInstructionXBlock(EnforceDueDates, XBlock, MissingDataFetcherMixin, PublishEventMixin):
     """
     Peer Instruction XBlock
 
@@ -430,7 +433,7 @@ class PeerInstructionXBlock(XBlock, MissingDataFetcherMixin, PublishEventMixin):
         else:
             return static_url
 
-    def student_view(self, context=None):
+    def student_view(self, context={}):
         """
         The primary view of the PeerInstructionXBlock, shown to students when viewing courses.
         """
@@ -442,10 +445,17 @@ class PeerInstructionXBlock(XBlock, MissingDataFetcherMixin, PublishEventMixin):
         random.seed(student_item['student_id'])
 
         answers = self.get_answers_for_student()
-        html = ""
-        html += self.resource_string("static/html/ubcpi.html")
+        '''html = ""
+        html += self.resource_string("static/html/ubcpi.html")'''
 
-        frag = Fragment(html)
+        context.update(
+            {
+                'is_past_due': self.is_past_due(),
+                # 'options': self.options,
+            }
+        )
+        template = get_template('ubcpi.html')
+        frag = Fragment(template.render(context))
         frag.add_css(self.resource_string("static/css/ubcpi.css"))
         frag.add_javascript_url("//ajax.googleapis.com/ajax/libs/angularjs/1.3.13/angular.js")
         frag.add_javascript_url("//ajax.googleapis.com/ajax/libs/angularjs/1.3.13/angular-messages.js")
